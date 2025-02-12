@@ -16,6 +16,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AdministratorAccess
         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
         - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
@@ -37,6 +38,7 @@ Resources:
                   - !Sub arn:aws:s3:::${BatchBucket}
                   - arn:aws:s3:::ngi-igenomes
                   - arn:aws:s3:::ngi-igenomes/*
+      RoleName: !Sub ${AWS::StackName}-SageMakerExecutionRole
 
   AWSBatchFargateInstanceRole:
     Type: AWS::IAM::Role
@@ -55,6 +57,7 @@ Resources:
         - arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
       # Policy for the job to access resources on AWS 
       Policies: 
         - PolicyName: BatchFargatePermissions
@@ -77,7 +80,12 @@ Resources:
                   - logs:PutLogEvents
                   - s3:GetObject
                   - s3:PutObject
+                  - ecs:CreateCluster
+                  - ecs:DeleteCluster
+                  - ecs:DescribeClusters
+                  - ecs:ListClusters
                 Resource: "*"
+      RoleName: !Sub ${AWS::StackName}-AWSBatchFargateRole      
   ExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -92,14 +100,15 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns: 
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
+        - arn:aws:iam::aws:policy/AmazonECS_FullAccess
+      RoleName: !Sub ${AWS::StackName}-ExecutionRole
   ####### Job definition ######
   BatchFargateJobDefinition:
     Type: AWS::Batch::JobDefinition
     Properties: 
       JobDefinitionName: !Sub ${AWS::StackName}-JobDefinition
       Type: container
-      PlatformCapabilities:
-        - FARGATE
       Timeout:
         AttemptDurationSeconds: 600
       RetryStrategy: 
@@ -115,6 +124,8 @@ Resources:
           Value: 2048 
         JobRoleArn: !GetAtt AWSBatchFargateInstanceRole.Arn
         ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      PlatformCapabilities:
+        - FARGATE
 
   ####### Spin up compute environment for AWS Batch ###########
   BatchComputeEnvironment:
@@ -126,9 +137,9 @@ Resources:
       ComputeResources:
         Type: FARGATE
         MaxvCpus: 256
-        Subnets: !Split [',', !GetAtt GetNetworkingResource.SubnetIds]
+        Subnets: !Split [',', !GetAtt GetVpcResource.SubnetIds]
         SecurityGroupIds:
-          - !GetAtt GetNetworkingResource.SecurityGroupId
+          - !GetAtt GetVpcResource.SecurityGroupId
       ServiceRole: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/batch.amazonaws.com/AWSServiceRoleForBatch
 
   ######## Job Queue #############
@@ -202,12 +213,12 @@ Resources:
                     - logs:CreateLogStream
                     - logs:PutLogEvents
                   Resource: arn:aws:logs:*:*:*
-  GetNetworkingFunction:
+  GetVpcResourcesFunction:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.lambda_handler
       Role: !GetAtt CustomECSLambdaExecutionRole.Arn
-      FunctionName: GetNetworkingFunction
+      FunctionName: GetVpcResourcesFunction
       Runtime: python3.12
       Timeout: 60
       Code: 
@@ -322,10 +333,10 @@ Resources:
                 # Send failure response to CloudFormation with the correct RequestId
                 error_message = str(e)
                 send_response(response_url, stack_id, logical_id, request_id, 'FAILED', {}, reason=error_message)
-  GetNetworkingResource:
+  GetVpcResource:
     Type: AWS::CloudFormation::CustomResource
     Properties:
-      ServiceToken: !GetAtt GetNetworkingFunction.Arn
+      ServiceToken: !GetAtt GetVpcResourcesFunction.Arn
       ServiceTimeout: 60
       
 Outputs:
@@ -338,3 +349,6 @@ Outputs:
   OutputBucketName:
     Description: Name of the S3 Output Bucket
     Value: !Ref BatchBucket
+  FargateJobDefinition:
+    Value: !Ref BatchFargateJobDefinition
+    Description: The job definition for AWS Batch using Fargates
