@@ -1,0 +1,28 @@
+# Use an offical Ubuntu image as the base image
+FROM ubuntu:20.04
+
+# Set environment variables to avoid interactive prompts during package install 
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install dependencies 
+RUN apt-get update && \
+    apt-get install -y \ 
+    wget \
+    curl \
+    sudo \
+    default-jdk \
+    && apt-get clean
+
+# Verify Java installation 
+RUN java -version 
+
+# Install Nextflowusing curl 
+RUN curl -s https://get.nextflow.io | bash && \
+    chmod +x nextflow && \
+    ./nextflow self-update
+
+# Set the working directory 
+WORKDIR /workspace
+
+# Define the entrypoint 
+ENTRYPOINT ["nextflow"]
