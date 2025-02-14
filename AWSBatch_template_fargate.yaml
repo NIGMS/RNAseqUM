@@ -58,6 +58,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonS3FullAccess
         - arn:aws:iam::aws:policy/AmazonECS_FullAccess
         - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess
       # Policy for the job to access resources on AWS 
       Policies: 
         - PolicyName: BatchFargatePermissions
@@ -76,6 +77,7 @@ Resources:
                   - ecr:GetDownloadUrlForLayer
                   - ecr:BatchGetImage
                   - ecr:GetAuthorizationToken
+                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - s3:GetObject
@@ -114,7 +116,7 @@ Resources:
       RetryStrategy: 
         Attempts: 1
       ContainerProperties:
-        Image: amazonlinux
+        Image: nextflow/nextflow:latest # public.ecr.aws/amazonlinux/amazonlinux:latest
         NetworkConfiguration:
           AssignPublicIp: ENABLED
         ResourceRequirements:
